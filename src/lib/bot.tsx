@@ -37,6 +37,7 @@ const adapters = buildAdapters();
 // Define thread state type
 interface ThreadState {
   aiMode?: boolean;
+  sandboxId?: string;
 }
 
 // Create the bot instance with typed thread state
@@ -47,13 +48,34 @@ export const bot = new Chat<typeof adapters, ThreadState>({
   logger: "debug",
 });
 
+async function runThreadAgentPrompt(thread: { state: Promise<ThreadState | undefined>; setState: (state: ThreadState) => Promise<void>; }, prompt: string) {
+  const threadState = await thread.state;
+  const result = await runAgentPrompt({
+    prompt,
+    sandboxId: threadState?.sandboxId,
+  });
+
+  if (result.sandboxId !== threadState?.sandboxId) {
+    await thread.setState({
+      ...(threadState ?? {}),
+      sandboxId: result.sandboxId,
+    });
+  }
+
+  return result.text;
+}
+
 // Handle new @mentions of the bot
 bot.onNewMention(async (thread, message) => {
   await thread.subscribe();
+  const threadState = await thread.state;
 
   // Check if user wants to enable AI mode (mention contains "AI")
   if (AI_MENTION_REGEX.test(message.text)) {
-    await thread.setState({ aiMode: true });
+    await thread.setState({
+      ...(threadState ?? {}),
+      aiMode: true,
+    });
     await thread.post(
       <Card title={`${emoji.sparkles} AI Mode Enabled`}>
         <Text>
@@ -71,7 +93,7 @@ bot.onNewMention(async (thread, message) => {
 
     // Also respond to the initial message with AI
     await thread.startTyping("Thinking...");
-    const response = await runAgentPrompt(message.text);
+    const response = await runThreadAgentPrompt(thread, message.text);
     await thread.post(response);
     return;
   }
@@ -568,14 +590,20 @@ bot.onSubscribedMessage(async (thread, message) => {
 
   // Check if user wants to disable AI mode
   if (DISABLE_AI_REGEX.test(message.text)) {
-    await thread.setState({ aiMode: false });
+    await thread.setState({
+      ...(threadState ?? {}),
+      aiMode: false,
+    });
     await thread.post(`${emoji.check} AI mode disabled for this thread.`);
     return;
   }
 
   // Check if user wants to enable AI mode
   if (ENABLE_AI_REGEX.test(message.text)) {
-    await thread.setState({ aiMode: true });
+    await thread.setState({
+      ...(threadState ?? {}),
+      aiMode: true,
+    });
     await thread.post(`${emoji.sparkles} AI mode enabled for this thread!`);
     return;
   }
@@ -605,7 +633,7 @@ bot.onSubscribedMessage(async (thread, message) => {
       .map((entry) => `${entry.role}: ${entry.content}`)
       .join("\n\n");
     await thread.startTyping("Thinking...");
-    const response = await runAgentPrompt(historyPrompt);
+    const response = await runThreadAgentPrompt(thread, historyPrompt);
     await thread.post(response);
     return;
   }
