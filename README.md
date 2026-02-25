@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js Chat Example
 
-## Getting Started
+A full-featured example app demonstrating the Chat SDK with Next.js. Integrates with Slack, Microsoft Teams, Google Chat, Discord, GitHub, and Linear — configure whichever platforms you need via environment variables.
 
-First, run the development server:
+## Getting started
+
+### Prerequisites
+
+- Node.js 20+
+- pnpm 9+
+- Redis (for state persistence)
+- At least one platform configured (see [Environment variables](#environment-variables))
+
+### Setup
+
+1. Install dependencies from the monorepo root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Copy the example environment file and fill in your platform credentials:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Start the dev server:
 
-## Learn More
+```bash
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+The app runs at `http://localhost:3000`. Platform webhooks should point to `/api/webhooks/{platform}` (e.g. `/api/webhooks/slack`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> For local development with real webhooks, use a tunneling tool like [ngrok](https://ngrok.com) or [`localtunnel`](https://github.com/localtunnel/localtunnel).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## What it demonstrates
 
-## Deploy on Vercel
+- **Event handlers** — mentions, thread subscriptions, pattern matching, reactions
+- **AI mode** — `@mention AI` to enable streaming LLM responses via the Vercel AI SDK
+- **Cards** — interactive JSX-based cards with buttons, dropdowns, and fields
+- **Modals** — form dialogs with text inputs, validation, and private metadata
+- **Actions** — button clicks and dropdown selections with response handlers
+- **Slash commands** — platform-specific command handling
+- **Ephemeral messages** — user-only visible messages with DM fallback
+- **DMs** — programmatic direct message initiation
+- **File uploads** — attachment detection and display
+- **Multi-platform** — same bot logic across all six platforms
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── webhooks/[platform]/route.ts   # Main webhook entry point
+│   │   ├── slack/install/                  # Slack OAuth flow
+│   │   └── discord/gateway/route.ts        # Discord gateway cron
+│   ├── settings/page.tsx                   # Preview branch config UI
+│   └── page.tsx                            # Home page
+├── lib/
+│   ├── bot.tsx                             # Bot logic and handlers
+│   ├── adapters.ts                         # Adapter initialization
+│   └── recorder.ts                         # Webhook recording system
+└── middleware.ts                            # Preview branch proxy
+```
+
+## Environment variables
+
+Copy `.env.example` for the full list. At minimum, set `BOT_USERNAME` and credentials for one platform:
+
+| Variable | Description |
+|----------|-------------|
+| `BOT_USERNAME` | Bot display name |
+| `SLACK_BOT_TOKEN` | Slack bot token (single-workspace mode) |
+| `SLACK_SIGNING_SECRET` | Slack request verification |
+| `TEAMS_APP_ID` | Teams app ID |
+| `TEAMS_APP_PASSWORD` | Teams app password |
+| `GOOGLE_CHAT_CREDENTIALS` | Google Chat service account JSON |
+| `DISCORD_BOT_TOKEN` | Discord bot token |
+| `DISCORD_PUBLIC_KEY` | Discord interaction verification key |
+| `GITHUB_TOKEN` | GitHub PAT or App credentials |
+| `LINEAR_API_KEY` | Linear API key |
+| `REDIS_URL` | Redis connection string |
+
+See the [Chat SDK docs](https://chat-sdk.dev/docs) for full platform setup guides.
+
+## Recording and replay
+
+The app includes a recording system for capturing production webhook interactions and converting them into replay tests.
+
+```bash
+# Enable recording in your environment
+RECORDING_ENABLED=true
+
+# List recorded sessions
+pnpm recording:list
+
+# Export a session
+pnpm recording:export <session-id>
+```
+
+See `packages/integration-tests/fixtures/replay/README.md` for the full workflow.
+
+## Preview branch testing
+
+Test PRs with real webhook traffic by proxying requests from production to a preview deployment:
+
+1. Deploy a preview branch to Vercel
+2. Go to `/settings` on the production deployment
+3. Enter the preview branch URL and save
+
+All webhook requests are proxied until the URL is cleared.
