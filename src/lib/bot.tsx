@@ -1,7 +1,6 @@
 /** @jsxImportSource chat */
 // @ts-nocheck - TypeScript doesn't understand custom JSX runtimes with per-file pragmas
 import { createRedisState } from "@chat-adapter/state-redis";
-import { ToolLoopAgent } from "ai";
 import {
   Actions,
   Button,
@@ -22,6 +21,7 @@ import {
   TextInput,
 } from "chat";
 import { buildAdapters } from "./adapters";
+import { runAgentPrompt } from "./agent";
 
 const AI_MENTION_REGEX = /\bAI\b/i;
 const DISABLE_AI_REGEX = /disable\s*AI/i;
@@ -45,13 +45,6 @@ export const bot = new Chat<typeof adapters, ThreadState>({
   adapters,
   state,
   logger: "debug",
-});
-
-// AI agent for AI mode
-const agent = new ToolLoopAgent({
-  model: "anthropic/claude-4.5-sonnet",
-  instructions:
-    "You are a helpful assistant in a chat thread. Answer the user's queries in a concise manner.",
 });
 
 // Handle new @mentions of the bot
@@ -78,8 +71,8 @@ bot.onNewMention(async (thread, message) => {
 
     // Also respond to the initial message with AI
     await thread.startTyping("Thinking...");
-    const result = await agent.stream({ prompt: message.text });
-    await thread.post(result.textStream);
+    const response = await runAgentPrompt(message.text);
+    await thread.post(response);
     return;
   }
 
@@ -608,9 +601,12 @@ bot.onSubscribedMessage(async (thread, message) => {
         content: msg.text,
       }));
     console.log("history", history);
+    const historyPrompt = history
+      .map((entry) => `${entry.role}: ${entry.content}`)
+      .join("\n\n");
     await thread.startTyping("Thinking...");
-    const result = await agent.stream({ prompt: history });
-    await thread.post(result.textStream);
+    const response = await runAgentPrompt(historyPrompt);
+    await thread.post(response);
     return;
   }
 
